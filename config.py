@@ -28,11 +28,11 @@ val_freq = 50
 
 # Dataset
 # Secret image paths
-TRAIN_PATH = '/root/Desktop/HiNet_ori/data/wm_train/'
-VAL_PATH = '/root/Desktop/HiNet_ori/data/wm_valid/'
+TRAIN_PATH = './data/wm_train/'
+VAL_PATH = './data/wm_valid/'
 # Cover image paths
-TRAIN_COVER_PATH = '/root/Desktop/HiNet_ori/data/DIV2K_train/'
-VAL_COVER_PATH = '/root/Desktop/HiNet_ori/data/DIV2K_valid/'
+TRAIN_COVER_PATH = './data/DIV2K_train_HR/'
+VAL_COVER_PATH = './data/DIV2K_valid_HR/'
 format_train = 'png'
 format_val = 'png'
 
@@ -46,11 +46,11 @@ progress_bar = False
 
 # Saving checkpoints:
 
-MODEL_PATH = '/home/jjp/Hinet/model/'
+MODEL_PATH = './model/'
 checkpoint_on_error = True
 SAVE_freq = 50
 
-IMAGE_PATH = '/home/jjp/Hinet/image/'
+IMAGE_PATH = './image/'
 IMAGE_PATH_cover = IMAGE_PATH + 'cover/'
 IMAGE_PATH_secret = IMAGE_PATH + 'secret/'
 IMAGE_PATH_steg = IMAGE_PATH + 'steg/'
@@ -62,4 +62,4 @@ tain_next = False
 trained_epoch = 0
 
 # Path to a pretrained checkpoint for finetuning
-PRETRAINED_MODEL = '/root/Desktop/HiNet_ori/model/model.pt'
+PRETRAINED_MODEL = './model/model.pt'
