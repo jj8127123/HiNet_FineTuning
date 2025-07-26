@@ -60,3 +60,6 @@ IMAGE_PATH_secret_rev = IMAGE_PATH + 'secret-rev/'
 suffix = 'model.pt'
 tain_next = False
 trained_epoch = 0
+
+# Path to a pretrained checkpoint for finetuning
+PRETRAINED_MODEL = '/root/Desktop/HiNet_ori/model/model.pt'
