@@ -19,27 +19,29 @@ class Hinet_Dataset(Dataset):
         self.mode = mode
         if mode == 'train':
             # train
-            self.files = natsorted(sorted(glob.glob(c.TRAIN_PATH + "/*." + c.format_train)))
+            self.cover_files = natsorted(sorted(glob.glob(c.TRAIN_COVER_PATH + "/*." + c.format_train)))
+            self.secret_files = natsorted(sorted(glob.glob(c.TRAIN_PATH + "/*." + c.format_train)))
         else:
-            # test
-            self.files = sorted(glob.glob(c.VAL_PATH + "/*." + c.format_val))
+            # val
+            self.cover_files = natsorted(sorted(glob.glob(c.VAL_COVER_PATH + "/*." + c.format_val)))
+            self.secret_files = natsorted(sorted(glob.glob(c.VAL_PATH + "/*." + c.format_val)))
+        self.length = max(len(self.cover_files), len(self.secret_files))
 
     def __getitem__(self, index):
         try:
-            image = Image.open(self.files[index])
-            image = to_rgb(image)
-            item = self.transform(image)
-            return item
+            cover_img = Image.open(self.cover_files[index % len(self.cover_files)])
+            secret_img = Image.open(self.secret_files[index % len(self.secret_files)])
+            cover_img = to_rgb(cover_img)
+            secret_img = to_rgb(secret_img)
+            cover_item = self.transform(cover_img)
+            secret_item = self.transform(secret_img)
+            return cover_item, secret_item
 
-        except:
-            return self.__getitem__(index + 1)
+        except Exception:
+            return self.__getitem__((index + 1) % self.length)
 
     def __len__(self):
-        if self.mode == 'shuffle':
-            return max(len(self.files_cover), len(self.files_secret))
-
-        else:
-            return len(self.files)
+        return self.length
 
 
 transform = T.Compose([
