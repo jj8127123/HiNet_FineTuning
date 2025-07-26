@@ -27,8 +27,12 @@ val_freq = 50
 
 
 # Dataset
-TRAIN_PATH = '/home/jjp/Dataset/DIV2K/DIV2K_train_HR/'
-VAL_PATH = '/home/jjp/Dataset/DIV2K/DIV2K_valid_HR/'
+# Secret image paths
+TRAIN_PATH = '/root/Desktop/HiNet_ori/data/wm_train/'
+VAL_PATH = '/root/Desktop/HiNet_ori/data/wm_valid/'
+# Cover image paths
+TRAIN_COVER_PATH = '/root/Desktop/HiNet_ori/data/DIV2K_train/'
+VAL_COVER_PATH = '/root/Desktop/HiNet_ori/data/DIV2K_valid/'
 format_train = 'png'
 format_val = 'png'
 
@@ -56,3 +60,6 @@ IMAGE_PATH_secret_rev = IMAGE_PATH + 'secret-rev/'
 suffix = 'model.pt'
 tain_next = False
 trained_epoch = 0
+
+# Path to a pretrained checkpoint for finetuning
+PRETRAINED_MODEL = '/root/Desktop/HiNet_ori/model/model.pt'
