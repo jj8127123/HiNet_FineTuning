@@ -83,19 +83,29 @@ init_model(net)
 
 # Wrap model with PEFT adapters if available
 if PEFT_AVAILABLE:
-    lora_config = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        lora_dropout=0.1,
-        target_modules=["conv"],
-        task_type=TaskType.FEATURE_EXTRACTION,
-    )
-    net = get_peft_model(net, lora_config)
-    # Display number of trainable parameters for verification
-    try:
-        net.print_trainable_parameters()
-    except Exception:
-        pass
+    # Collect unique convolution layer names for LoRA targeting
+    conv_module_names = {
+        name.split(".")[-1]
+        for name, module in net.named_modules()
+        if isinstance(module, torch.nn.Conv2d)
+    }
+
+    if conv_module_names:
+        lora_config = LoraConfig(
+            r=8,
+            lora_alpha=16,
+            lora_dropout=0.1,
+            target_modules=sorted(conv_module_names),
+            task_type=TaskType.FEATURE_EXTRACTION,
+        )
+        net = get_peft_model(net, lora_config)
+        # Display number of trainable parameters for verification
+        try:
+            net.print_trainable_parameters()
+        except Exception:
+            pass
+    else:
+        print("No convolutional modules found for LoRA; skipping PEFT wrapping.")
 
 net = torch.nn.DataParallel(net, device_ids=c.device_ids)
 para = get_parameter_number(net)
