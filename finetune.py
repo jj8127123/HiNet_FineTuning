@@ -11,6 +11,12 @@ import datasets
 import viz
 import modules.Unet_common as common
 import warnings
+try:
+    from peft import LoraConfig, TaskType, get_peft_model
+    PEFT_AVAILABLE = True
+except Exception:
+    PEFT_AVAILABLE = False
+    print("PEFT library not found. Proceeding without parameter-efficient layers.")
 
 warnings.filterwarnings("ignore")
 
@@ -60,7 +66,8 @@ def computePSNR(origin, pred):
 def load(name):
     state_dicts = torch.load(name)
     network_state_dict = {k: v for k, v in state_dicts['net'].items() if 'tmp_var' not in k}
-    net.load_state_dict(network_state_dict)
+    # Allow missing keys when PEFT adapters add new parameters
+    net.load_state_dict(network_state_dict, strict=False)
     try:
         optim.load_state_dict(state_dicts['opt'])
     except Exception:
@@ -73,6 +80,23 @@ def load(name):
 net = Model()
 net.cuda()
 init_model(net)
+
+# Wrap model with PEFT adapters if available
+if PEFT_AVAILABLE:
+    lora_config = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        lora_dropout=0.1,
+        target_modules=["conv"],
+        task_type=TaskType.FEATURE_EXTRACTION,
+    )
+    net = get_peft_model(net, lora_config)
+    # Display number of trainable parameters for verification
+    try:
+        net.print_trainable_parameters()
+    except Exception:
+        pass
+
 net = torch.nn.DataParallel(net, device_ids=c.device_ids)
 para = get_parameter_number(net)
 print(para)
