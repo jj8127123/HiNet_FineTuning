@@ -38,7 +38,7 @@ format_val = 'png'
 
 # Display and logging:
 loss_display_cutoff = 2.0
-loss_names = ['L', 'lr']
+loss_names = ['L', 'lr', 'PSNR_c', 'PSNR_s']
 silent = False
 live_visualization = False
 progress_bar = False
