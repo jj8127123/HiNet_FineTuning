@@ -11,17 +11,14 @@ import datasets
 import viz
 import modules.Unet_common as common
 import warnings
-try:
-    from peft import LoraConfig, TaskType, get_peft_model
-    PEFT_AVAILABLE = True
-except Exception:
-    PEFT_AVAILABLE = False
-    print("PEFT library not found. Proceeding without parameter-efficient layers.")
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
 def gauss_noise(shape):
     noise = torch.zeros(shape).cuda()
@@ -29,30 +26,25 @@ def gauss_noise(shape):
         noise[i] = torch.randn(noise[i].shape).cuda()
     return noise
 
-
 def guide_loss(output, bicubic_image):
     loss_fn = torch.nn.MSELoss(reduce=True, size_average=False)
     loss = loss_fn(output, bicubic_image)
     return loss.to(device)
-
 
 def reconstruction_loss(rev_input, input):
     loss_fn = torch.nn.MSELoss(reduce=True, size_average=False)
     loss = loss_fn(rev_input, input)
     return loss.to(device)
 
-
 def low_frequency_loss(ll_input, gt_input):
     loss_fn = torch.nn.MSELoss(reduce=True, size_average=False)
     loss = loss_fn(ll_input, gt_input)
     return loss.to(device)
 
-
 def get_parameter_number(net):
     total_num = sum(p.numel() for p in net.parameters())
     trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
     return {'Total': total_num, 'Trainable': trainable_num}
-
 
 def computePSNR(origin, pred):
     origin = np.array(origin).astype(np.float32)
@@ -62,17 +54,14 @@ def computePSNR(origin, pred):
         return 100
     return 10 * math.log10(255.0 ** 2 / mse)
 
-
 def load(name):
     state_dicts = torch.load(name)
     network_state_dict = {k: v for k, v in state_dicts['net'].items() if 'tmp_var' not in k}
-    # Allow missing keys when PEFT adapters add new parameters
     net.load_state_dict(network_state_dict, strict=False)
     try:
         optim.load_state_dict(state_dicts['opt'])
     except Exception:
         print('Cannot load optimizer for some reason or other')
-
 
 #####################
 # Model initialize: #
@@ -81,26 +70,21 @@ net = Model()
 net.cuda()
 init_model(net)
 
-# Wrap model with PEFT adapters if available
-if PEFT_AVAILABLE:
-    lora_config = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        lora_dropout=0.1,
-        target_modules=["conv"],
-        task_type=TaskType.FEATURE_EXTRACTION,
-    )
-    net = get_peft_model(net, lora_config)
-    # Display number of trainable parameters for verification
-    try:
-        net.print_trainable_parameters()
-    except Exception:
-        pass
+# 전체 파라미터 freeze
+for param in net.parameters():
+    param.requires_grad = False
+
+# 부분 파라미터만 trainable로 설정 (예: 'inv'와 'conv' 이름 포함된 파라미터)
+for name, param in net.named_parameters():
+    if "inv" in name and "conv" in name:
+        param.requires_grad = True
+print("Trainable params after freezing and partial unfreeze:")
+print(get_parameter_number(net))
 
 net = torch.nn.DataParallel(net, device_ids=c.device_ids)
-para = get_parameter_number(net)
-print(para)
-params_trainable = list(filter(lambda p: p.requires_grad, net.parameters()))
+
+# trainable 파라미터만 옵티마이저에 전달
+params_trainable = [p for p in net.parameters() if p.requires_grad]
 
 optim = torch.optim.Adam(params_trainable, lr=c.lr, betas=c.betas, eps=1e-6, weight_decay=c.weight_decay)
 weight_scheduler = torch.optim.lr_scheduler.StepLR(optim, c.weight_step, gamma=c.gamma)
@@ -110,6 +94,21 @@ load(c.PRETRAINED_MODEL)
 
 dwt = common.DWT()
 iwt = common.IWT()
+
+# =============================
+# 로그 저장을 위한 디렉토리 및 파일명 자동 생성
+# =============================
+now = datetime.now().strftime("%Y%m%d_%H%M%S")
+save_dir = f"logs_{now}"
+os.makedirs(save_dir, exist_ok=True)
+
+log_csv_path = os.path.join(save_dir, 'training_log.csv')
+
+# 로그 저장용 리스트
+train_losses = []
+psnr_s_list = []
+psnr_c_list = []
+epochs = []
 
 try:
     writer = SummaryWriter(comment='finetune', filename_suffix='steg')
@@ -218,23 +217,78 @@ try:
 
                 writer.add_scalars('PSNR_S', {'average psnr': np.mean(psnr_s)}, i_epoch)
                 writer.add_scalars('PSNR_C', {'average psnr': np.mean(psnr_c)}, i_epoch)
+        else:
+            # validation하지 않은 epoch에도 리스트를 맞추기 위해 이전 값 복사
+            if len(psnr_s_list) > 0 and len(psnr_c_list) > 0:
+                psnr_s = [psnr_s_list[-1]]
+                psnr_c = [psnr_c_list[-1]]
+            else:
+                psnr_s = [0]
+                psnr_c = [0]
 
+        # 로그 저장
+        train_losses.append(epoch_losses[0])
+        psnr_s_list.append(np.mean(psnr_s))
+        psnr_c_list.append(np.mean(psnr_c))
+        epochs.append(i_epoch)
+
+        # loss 그래프 실시간 시각화
         viz.show_loss(epoch_losses)
         writer.add_scalars('Train', {'Train_Loss': epoch_losses[0]}, i_epoch)
 
+        # epoch별로 로그를 CSV로 저장 (중간 저장: 끊겨도 데이터 남도록)
+        df = pd.DataFrame({
+            'epoch': epochs,
+            'train_loss': train_losses,
+            'psnr_s': psnr_s_list,
+            'psnr_c': psnr_c_list
+        })
+        df.to_csv(log_csv_path, index=False)
+
+        # 일정 주기마다 모델 저장
         if i_epoch > 0 and (i_epoch % c.SAVE_freq) == 0:
             torch.save({'opt': optim.state_dict(),
-                        'net': net.state_dict()}, c.MODEL_PATH + 'model_checkpoint_%.5i' % i_epoch + '.pt')
+                        'net': net.state_dict()}, os.path.join(save_dir, f'model_checkpoint_{i_epoch:05d}.pt'))
         weight_scheduler.step()
 
     torch.save({'opt': optim.state_dict(),
-                'net': net.state_dict()}, c.MODEL_PATH + 'model' + '.pt')
+                'net': net.state_dict()}, os.path.join(save_dir, 'model_final.pt'))
     writer.close()
+
+    # =============================
+    # 그래프 이미지로 저장 (최종)
+    # =============================
+    plt.figure()
+    plt.plot(epochs, train_losses, label='Train Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Train Loss Curve')
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, 'loss_curve.png'))
+    plt.close()
+
+    plt.figure()
+    plt.plot(epochs, psnr_s_list, label='PSNR_S', color='red')
+    plt.xlabel('Epoch')
+    plt.ylabel('PSNR_S')
+    plt.title('PSNR_S Curve')
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, 'psnr_s_curve.png'))
+    plt.close()
+
+    plt.figure()
+    plt.plot(epochs, psnr_c_list, label='PSNR_C', color='blue')
+    plt.xlabel('Epoch')
+    plt.ylabel('PSNR_C')
+    plt.title('PSNR_C Curve')
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, 'psnr_c_curve.png'))
+    plt.close()
 
 except Exception:
     if c.checkpoint_on_error:
         torch.save({'opt': optim.state_dict(),
-                    'net': net.state_dict()}, c.MODEL_PATH + 'model_ABORT' + '.pt')
+                    'net': net.state_dict()}, os.path.join(save_dir, 'model_ABORT.pt'))
     raise
 
 finally:

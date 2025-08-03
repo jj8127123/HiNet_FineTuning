@@ -3,7 +3,7 @@ clamp = 2.0
 channels_in = 3
 log10_lr = -4.5
 lr = 10 ** log10_lr
-epochs = 1000
+epochs = 10
 weight_decay = 1e-5
 init_scale = 0.01
 
@@ -13,7 +13,7 @@ lamda_low_frequency = 1
 device_ids = [0]
 
 # Train:
-batch_size = 16
+batch_size = 8
 cropsize = 224
 betas = (0.5, 0.999)
 weight_step = 1000
