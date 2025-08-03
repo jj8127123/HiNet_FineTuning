@@ -6,6 +6,10 @@ import math
 import numpy as np
 from model import *
 import config as c
+
+# Suppress verbose Visualizer output for cleaner console logging
+c.silent = True
+
 from tensorboardX import SummaryWriter
 import datasets
 import viz
@@ -106,9 +110,10 @@ log_csv_path = os.path.join(save_dir, 'training_log.csv')
 
 # 로그 저장용 리스트
 train_losses = []
-psnr_s_list = []
+psnr_r_list = []
 psnr_c_list = []
 epochs = []
+lr_list = []
 
 try:
     writer = SummaryWriter(comment='finetune', filename_suffix='steg')
@@ -116,6 +121,8 @@ try:
     for i_epoch in range(c.epochs):
         i_epoch = i_epoch + c.trained_epoch + 1
         loss_history = []
+
+        net.train()
 
         #################
         #     train:    #
@@ -171,66 +178,63 @@ try:
         #################
         #     val:    #
         #################
-        if i_epoch % c.val_freq == 0:
-            with torch.no_grad():
-                psnr_s = []
-                psnr_c = []
-                net.eval()
-                for cover, secret in datasets.testloader:
-                    cover = cover.to(device)
-                    secret = secret.to(device)
-                    cover_input = dwt(cover)
-                    secret_input = dwt(secret)
+        with torch.no_grad():
+            psnr_r = []
+            psnr_c = []
+            net.eval()
+            for cover, secret in datasets.testloader:
+                cover = cover.to(device)
+                secret = secret.to(device)
+                cover_input = dwt(cover)
+                secret_input = dwt(secret)
 
-                    input_img = torch.cat((cover_input, secret_input), 1)
+                input_img = torch.cat((cover_input, secret_input), 1)
 
-                    #################
-                    #    forward:   #
-                    #################
-                    output = net(input_img)
-                    output_steg = output.narrow(1, 0, 4 * c.channels_in)
-                    steg = iwt(output_steg)
-                    output_z = output.narrow(1, 4 * c.channels_in, output.shape[1] - 4 * c.channels_in)
-                    output_z = gauss_noise(output_z.shape)
+                #################
+                #    forward:   #
+                #################
+                output = net(input_img)
+                output_steg = output.narrow(1, 0, 4 * c.channels_in)
+                steg = iwt(output_steg)
+                output_z = output.narrow(1, 4 * c.channels_in, output.shape[1] - 4 * c.channels_in)
+                output_z = gauss_noise(output_z.shape)
 
-                    #################
-                    #   backward:   #
-                    #################
-                    output_steg = output_steg.cuda()
-                    output_rev = torch.cat((output_steg, output_z), 1)
-                    output_image = net(output_rev, rev=True)
-                    secret_rev = output_image.narrow(1, 4 * c.channels_in, output_image.shape[1] - 4 * c.channels_in)
-                    secret_rev = iwt(secret_rev)
+                #################
+                #   backward:   #
+                #################
+                output_steg = output_steg.cuda()
+                output_rev = torch.cat((output_steg, output_z), 1)
+                output_image = net(output_rev, rev=True)
+                secret_rev = output_image.narrow(1, 4 * c.channels_in, output_image.shape[1] - 4 * c.channels_in)
+                secret_rev = iwt(secret_rev)
 
-                    secret_rev = secret_rev.cpu().numpy().squeeze() * 255
-                    np.clip(secret_rev, 0, 255)
-                    secret = secret.cpu().numpy().squeeze() * 255
-                    np.clip(secret, 0, 255)
-                    cover = cover.cpu().numpy().squeeze() * 255
-                    np.clip(cover, 0, 255)
-                    steg = steg.cpu().numpy().squeeze() * 255
-                    np.clip(steg, 0, 255)
-                    psnr_temp = computePSNR(secret_rev, secret)
-                    psnr_s.append(psnr_temp)
-                    psnr_temp_c = computePSNR(cover, steg)
-                    psnr_c.append(psnr_temp_c)
+                secret_rev = secret_rev.cpu().numpy().squeeze() * 255
+                secret_rev = np.clip(secret_rev, 0, 255)
+                secret = secret.cpu().numpy().squeeze() * 255
+                secret = np.clip(secret, 0, 255)
+                cover = cover.cpu().numpy().squeeze() * 255
+                cover = np.clip(cover, 0, 255)
+                steg = steg.cpu().numpy().squeeze() * 255
+                steg = np.clip(steg, 0, 255)
+                psnr_temp = computePSNR(secret_rev, secret)
+                psnr_r.append(psnr_temp)
+                psnr_temp_c = computePSNR(cover, steg)
+                psnr_c.append(psnr_temp_c)
 
-                writer.add_scalars('PSNR_S', {'average psnr': np.mean(psnr_s)}, i_epoch)
-                writer.add_scalars('PSNR_C', {'average psnr': np.mean(psnr_c)}, i_epoch)
-        else:
-            # validation하지 않은 epoch에도 리스트를 맞추기 위해 이전 값 복사
-            if len(psnr_s_list) > 0 and len(psnr_c_list) > 0:
-                psnr_s = [psnr_s_list[-1]]
-                psnr_c = [psnr_c_list[-1]]
-            else:
-                psnr_s = [0]
-                psnr_c = [0]
+        writer.add_scalars('PSNR_R', {'average psnr': np.mean(psnr_r)}, i_epoch)
+        writer.add_scalars('PSNR_C', {'average psnr': np.mean(psnr_c)}, i_epoch)
 
         # 로그 저장
         train_losses.append(epoch_losses[0])
-        psnr_s_list.append(np.mean(psnr_s))
+        psnr_r_list.append(np.mean(psnr_r))
         psnr_c_list.append(np.mean(psnr_c))
         epochs.append(i_epoch)
+        lr_list.append(optim.param_groups[0]['lr'])
+
+        current_lr = optim.param_groups[0]['lr']
+        print(
+            f"Epoch {i_epoch:03d} | Loss: {epoch_losses[0]:.6f} | LR: {current_lr:.6e} | PSNR_r: {np.mean(psnr_r):.4f} | PSNR_c: {np.mean(psnr_c):.4f}"
+        )
 
         # loss 그래프 실시간 시각화
         viz.show_loss(epoch_losses)
@@ -240,8 +244,9 @@ try:
         df = pd.DataFrame({
             'epoch': epochs,
             'train_loss': train_losses,
-            'psnr_s': psnr_s_list,
-            'psnr_c': psnr_c_list
+            'psnr_r': psnr_r_list,
+            'psnr_c': psnr_c_list,
+            'lr': lr_list
         })
         df.to_csv(log_csv_path, index=False)
 
@@ -268,12 +273,12 @@ try:
     plt.close()
 
     plt.figure()
-    plt.plot(epochs, psnr_s_list, label='PSNR_S', color='red')
+    plt.plot(epochs, psnr_r_list, label='PSNR_R', color='red')
     plt.xlabel('Epoch')
-    plt.ylabel('PSNR_S')
-    plt.title('PSNR_S Curve')
+    plt.ylabel('PSNR_R')
+    plt.title('PSNR_R Curve')
     plt.legend()
-    plt.savefig(os.path.join(save_dir, 'psnr_s_curve.png'))
+    plt.savefig(os.path.join(save_dir, 'psnr_r_curve.png'))
     plt.close()
 
     plt.figure()
@@ -283,6 +288,15 @@ try:
     plt.title('PSNR_C Curve')
     plt.legend()
     plt.savefig(os.path.join(save_dir, 'psnr_c_curve.png'))
+    plt.close()
+
+    plt.figure()
+    plt.plot(epochs, lr_list, label='Learning Rate', color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('LR')
+    plt.title('Learning Rate Curve')
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, 'lr_curve.png'))
     plt.close()
 
 except Exception:
