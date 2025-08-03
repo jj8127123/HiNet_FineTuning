@@ -32,10 +32,14 @@ class Visualizer:
 
             self.config_str += "==="*30 + "\n"
 
-            print(self.config_str)
-            print(header)
+            if not c.silent:
+                print(self.config_str)
+                print(header)
 
     def update_losses(self, losses, *args):
+        if c.silent:
+            return
+
         print('\r', '    '*20, end='')
         line = '\r%.3i' % (self.counter)
         for l in losses:

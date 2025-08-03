@@ -6,6 +6,10 @@ import math
 import numpy as np
 from model import *
 import config as c
+
+# Suppress verbose Visualizer output for cleaner console logging
+c.silent = True
+
 from tensorboardX import SummaryWriter
 import datasets
 import viz
