@@ -178,62 +178,69 @@ try:
         #################
         #     val:    #
         #################
-        with torch.no_grad():
-            psnr_r = []
-            psnr_c = []
-            net.eval()
-            for cover, secret in datasets.testloader:
-                cover = cover.to(device)
-                secret = secret.to(device)
-                cover_input = dwt(cover)
-                secret_input = dwt(secret)
+        if i_epoch % 50 == 0 or i_epoch == 1:
+            with torch.no_grad():
+                psnr_r = []
+                psnr_c = []
+                net.eval()
+                for cover, secret in datasets.testloader:
+                    cover = cover.to(device)
+                    secret = secret.to(device)
+                    cover_input = dwt(cover)
+                    secret_input = dwt(secret)
 
-                input_img = torch.cat((cover_input, secret_input), 1)
+                    input_img = torch.cat((cover_input, secret_input), 1)
 
-                #################
-                #    forward:   #
-                #################
-                output = net(input_img)
-                output_steg = output.narrow(1, 0, 4 * c.channels_in)
-                steg = iwt(output_steg)
-                output_z = output.narrow(1, 4 * c.channels_in, output.shape[1] - 4 * c.channels_in)
-                output_z = gauss_noise(output_z.shape)
+                    #################
+                    #    forward:   #
+                    #################
+                    output = net(input_img)
+                    output_steg = output.narrow(1, 0, 4 * c.channels_in)
+                    steg = iwt(output_steg)
+                    output_z = output.narrow(1, 4 * c.channels_in, output.shape[1] - 4 * c.channels_in)
+                    output_z = gauss_noise(output_z.shape)
 
-                #################
-                #   backward:   #
-                #################
-                output_steg = output_steg.cuda()
-                output_rev = torch.cat((output_steg, output_z), 1)
-                output_image = net(output_rev, rev=True)
-                secret_rev = output_image.narrow(1, 4 * c.channels_in, output_image.shape[1] - 4 * c.channels_in)
-                secret_rev = iwt(secret_rev)
+                    #################
+                    #   backward:   #
+                    #################
+                    output_steg = output_steg.cuda()
+                    output_rev = torch.cat((output_steg, output_z), 1)
+                    output_image = net(output_rev, rev=True)
+                    secret_rev = output_image.narrow(1, 4 * c.channels_in, output_image.shape[1] - 4 * c.channels_in)
+                    secret_rev = iwt(secret_rev)
 
-                secret_rev = secret_rev.cpu().numpy().squeeze() * 255
-                secret_rev = np.clip(secret_rev, 0, 255)
-                secret = secret.cpu().numpy().squeeze() * 255
-                secret = np.clip(secret, 0, 255)
-                cover = cover.cpu().numpy().squeeze() * 255
-                cover = np.clip(cover, 0, 255)
-                steg = steg.cpu().numpy().squeeze() * 255
-                steg = np.clip(steg, 0, 255)
-                psnr_temp = computePSNR(secret_rev, secret)
-                psnr_r.append(psnr_temp)
-                psnr_temp_c = computePSNR(cover, steg)
-                psnr_c.append(psnr_temp_c)
+                    secret_rev = secret_rev.cpu().numpy().squeeze() * 255
+                    secret_rev = np.clip(secret_rev, 0, 255)
+                    secret = secret.cpu().numpy().squeeze() * 255
+                    secret = np.clip(secret, 0, 255)
+                    cover = cover.cpu().numpy().squeeze() * 255
+                    cover = np.clip(cover, 0, 255)
+                    steg = steg.cpu().numpy().squeeze() * 255
+                    steg = np.clip(steg, 0, 255)
+                    psnr_temp = computePSNR(secret_rev, secret)
+                    psnr_r.append(psnr_temp)
+                    psnr_temp_c = computePSNR(cover, steg)
+                    psnr_c.append(psnr_temp_c)
 
-        writer.add_scalars('PSNR_R', {'average psnr': np.mean(psnr_r)}, i_epoch)
-        writer.add_scalars('PSNR_C', {'average psnr': np.mean(psnr_c)}, i_epoch)
+            mean_psnr_r = np.mean(psnr_r)
+            mean_psnr_c = np.mean(psnr_c)
+        else:
+            mean_psnr_r = psnr_r_list[-1] if len(psnr_r_list) > 0 else 0
+            mean_psnr_c = psnr_c_list[-1] if len(psnr_c_list) > 0 else 0
+
+        writer.add_scalars('PSNR_R', {'average psnr': mean_psnr_r}, i_epoch)
+        writer.add_scalars('PSNR_C', {'average psnr': mean_psnr_c}, i_epoch)
 
         # 로그 저장
         train_losses.append(epoch_losses[0])
-        psnr_r_list.append(np.mean(psnr_r))
-        psnr_c_list.append(np.mean(psnr_c))
+        psnr_r_list.append(mean_psnr_r)
+        psnr_c_list.append(mean_psnr_c)
         epochs.append(i_epoch)
         lr_list.append(optim.param_groups[0]['lr'])
 
         current_lr = optim.param_groups[0]['lr']
         print(
-            f"Epoch {i_epoch:03d} | Loss: {epoch_losses[0]:.6f} | LR: {current_lr:.6e} | PSNR_r: {np.mean(psnr_r):.4f} | PSNR_c: {np.mean(psnr_c):.4f}"
+            f"Epoch {i_epoch:03d} | Loss: {epoch_losses[0]:.6f} | LR: {current_lr:.6e} | PSNR_r: {mean_psnr_r:.4f} | PSNR_c: {mean_psnr_c:.4f}"
         )
 
         # loss 그래프 실시간 시각화

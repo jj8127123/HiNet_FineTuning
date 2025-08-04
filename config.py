@@ -3,7 +3,7 @@ clamp = 2.0
 channels_in = 3
 log10_lr = -4.5
 lr = 10 ** log10_lr
-epochs = 10
+epochs = 1000
 weight_decay = 1e-5
 init_scale = 0.01
 
@@ -21,7 +21,7 @@ gamma = 0.5
 
 # Val:
 cropsize_val = 1024
-batchsize_val = 2
+batchsize_val = 32
 shuffle_val = False
 val_freq = 50
 
@@ -57,7 +57,7 @@ IMAGE_PATH_steg = IMAGE_PATH + 'steg/'
 IMAGE_PATH_secret_rev = IMAGE_PATH + 'secret-rev/'
 
 # Load:
-suffix = 'model.pt'
+suffix = 'model_checkpoint_01000.pt'
 tain_next = False
 trained_epoch = 0
 
