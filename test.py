@@ -60,9 +60,10 @@ iwt = common.IWT()
 
 
 with torch.no_grad():
-    for i, (cover, secret) in enumerate(datasets.testloader):
-        cover = cover.to(device)
-        secret = secret.to(device)
+    for i, data in enumerate(datasets.testloader):
+        data = data.to(device)
+        cover = data[data.shape[0] // 2:, :, :, :]
+        secret = data[:data.shape[0] // 2, :, :, :]
         cover_input = dwt(cover)
         secret_input = dwt(secret)
         input_img = torch.cat((cover_input, secret_input), 1)
@@ -88,14 +89,10 @@ with torch.no_grad():
         resi_cover = (steg_img - cover) * 20
         resi_secret = (secret_rev - secret) * 20
 
-        batch_size = cover.size(0)
-        for j in range(batch_size):
-            idx = i * batch_size + j
-            torchvision.utils.save_image(cover[j], c.IMAGE_PATH_cover + '%05d.png' % idx)
-            torchvision.utils.save_image(secret[j], c.IMAGE_PATH_secret + '%05d.png' % idx)
-            torchvision.utils.save_image(steg_img[j], c.IMAGE_PATH_steg + '%05d.png' % idx)
-            torchvision.utils.save_image(secret_rev[j], c.IMAGE_PATH_secret_rev + '%05d.png' % idx)
-
+        torchvision.utils.save_image(cover, c.IMAGE_PATH_cover + '%.5d.png' % i)
+        torchvision.utils.save_image(secret, c.IMAGE_PATH_secret + '%.5d.png' % i)
+        torchvision.utils.save_image(steg_img, c.IMAGE_PATH_steg + '%.5d.png' % i)
+        torchvision.utils.save_image(secret_rev, c.IMAGE_PATH_secret_rev + '%.5d.png' % i)
 
 
 

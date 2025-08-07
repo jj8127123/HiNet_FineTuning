@@ -1,21 +1,4 @@
-"""Core HiNet architecture.
-
-This module defines the :class:`Hinet` network used throughout the
-project.  The original implementation imported everything from
-``model.py`` in order to gain access to ``torch.nn`` as ``nn``.  However,
-``model.py`` itself imports ``Hinet`` from this file, which leads to a
-classic circular import problem.  When ``evaluate_FP32_model.py`` tried
-to import :mod:`hinet`, Python encountered this cycle and raised
-``ImportError: cannot import name 'Hinet' from partially initialized
-module 'hinet'``.
-
-To break this cycle we remove the wildcard import from ``model.py`` and
-explicitly import ``torch.nn`` here.  This ensures the module is
-self‑contained and can be imported without initializing ``model.py``
-first.
-"""
-
-import torch.nn as nn
+from model import *
 from invblock import INV_block
 
 
@@ -83,5 +66,3 @@ class Hinet(nn.Module):
             out = self.inv1(out, rev=True)
 
         return out
-
-
