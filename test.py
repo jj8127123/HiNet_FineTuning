@@ -90,10 +90,13 @@ def main():
         writer = csv.writer(csvfile)
         writer.writerow(["img_name", "psnr_c", "psnr_r", "ssim_c", "ssim_r", "ssim_avg"])
 
-        for i, data in tqdm(enumerate(datasets.testloader), total=len(datasets.testloader), desc="Evaluating"):
-            data = data.to(device)
-            cover = data[data.shape[0] // 2:, :, :, :]
-            secret = data[:data.shape[0] // 2, :, :, :]
+        for i, (cover, secret) in tqdm(
+            enumerate(datasets.testloader),
+            total=len(datasets.testloader),
+            desc="Evaluating",
+        ):
+            cover = cover.to(device)
+            secret = secret.to(device)
             cover_input = dwt(cover)
             secret_input = dwt(secret)
             input_img = torch.cat((cover_input, secret_input), 1)
@@ -111,44 +114,62 @@ def main():
             secret_rev = backward_img.narrow(1, 4 * c.channels_in, backward_img.shape[1] - 4 * c.channels_in)
             secret_rev = iwt(secret_rev)
 
-            # 이미지 저장 이름 (5자리 00001.png)
-            img_name = f"{i+1:05d}.png"
-            img_names.append(img_name)
+            batch_size = cover.shape[0]
+            for j in range(batch_size):
+                img_index = i * batch_size + j
+                img_name = f"{img_index + 1:05d}.png"
+                img_names.append(img_name)
 
-            # 이미지 numpy 변환 및 저장
-            cover_np = tensor_to_image(cover[0])
-            secret_np = tensor_to_image(secret[0])
-            steg_np = tensor_to_image(steg_img[0])
-            secret_rev_np = tensor_to_image(secret_rev[0])
+                cover_np = tensor_to_image(cover[j])
+                secret_np = tensor_to_image(secret[j])
+                steg_np = tensor_to_image(steg_img[j])
+                secret_rev_np = tensor_to_image(secret_rev[j])
 
-            save_image(cover_np, save_dirs["cover"], img_name)
-            save_image(secret_np, save_dirs["secret"], img_name)
-            save_image(steg_np, save_dirs["steg"], img_name)
-            save_image(secret_rev_np, save_dirs["secret_rev"], img_name)
+                save_image(cover_np, save_dirs["cover"], img_name)
+                save_image(secret_np, save_dirs["secret"], img_name)
+                save_image(steg_np, save_dirs["steg"], img_name)
+                save_image(secret_rev_np, save_dirs["secret_rev"], img_name)
 
-            # PSNR/SSIM 계산 (오류시 0)
-            try:
-                psnr_c = calculate_psnr(cover_np.astype(np.float32), steg_np.astype(np.float32))
-                psnr_r = calculate_psnr(secret_np.astype(np.float32), secret_rev_np.astype(np.float32))
-                ssim_c = calculate_ssim(cover_np.astype(np.float32), steg_np.astype(np.float32))
-                ssim_r = calculate_ssim(secret_np.astype(np.float32), secret_rev_np.astype(np.float32))
-                ssim_avg = (ssim_c + ssim_r) / 2
-            except:
-                psnr_c = psnr_r = ssim_c = ssim_r = ssim_avg = 0
+                # PSNR/SSIM 계산 (오류시 0)
+                try:
+                    psnr_c = calculate_psnr(
+                        cover_np.astype(np.float32), steg_np.astype(np.float32)
+                    )
+                    psnr_r = calculate_psnr(
+                        secret_np.astype(np.float32), secret_rev_np.astype(np.float32)
+                    )
+                    ssim_c = calculate_ssim(
+                        cover_np.astype(np.float32), steg_np.astype(np.float32)
+                    )
+                    ssim_r = calculate_ssim(
+                        secret_np.astype(np.float32), secret_rev_np.astype(np.float32)
+                    )
+                    ssim_avg = (ssim_c + ssim_r) / 2
+                except Exception:
+                    psnr_c = psnr_r = ssim_c = ssim_r = ssim_avg = 0
 
-            # inf/nan 방지
-            if np.isinf(psnr_c) or np.isnan(psnr_c):
-                psnr_c = 0
-            if np.isinf(psnr_r) or np.isnan(psnr_r):
-                psnr_r = 0
+                # inf/nan 방지
+                if np.isinf(psnr_c) or np.isnan(psnr_c):
+                    psnr_c = 0
+                if np.isinf(psnr_r) or np.isnan(psnr_r):
+                    psnr_r = 0
 
-            psnr_c_list.append(psnr_c)
-            psnr_r_list.append(psnr_r)
-            ssim_c_list.append(ssim_c)
-            ssim_r_list.append(ssim_r)
-            ssim_avg_list.append(ssim_avg)
+                psnr_c_list.append(psnr_c)
+                psnr_r_list.append(psnr_r)
+                ssim_c_list.append(ssim_c)
+                ssim_r_list.append(ssim_r)
+                ssim_avg_list.append(ssim_avg)
 
-            writer.writerow([img_name, f"{psnr_c:.6f}", f"{psnr_r:.6f}", f"{ssim_c:.6f}", f"{ssim_r:.6f}", f"{ssim_avg:.6f}"])
+                writer.writerow(
+                    [
+                        img_name,
+                        f"{psnr_c:.6f}",
+                        f"{psnr_r:.6f}",
+                        f"{ssim_c:.6f}",
+                        f"{ssim_r:.6f}",
+                        f"{ssim_avg:.6f}",
+                    ]
+                )
 
         # 평균값 기록 (맨 마지막 줄)
         avg_psnr_c = np.mean(psnr_c_list)
